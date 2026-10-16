@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitCoach Agent - 训练打卡</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { background: #f3f4f6; min-height: 100vh; }
+    .card-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .toast { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============ 顶部导航 ============ -->
+  <nav class="bg-white card-shadow sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center">
+        <a href="./dashboard.html" class="p-2 bg-indigo-100 rounded-lg mr-3 hover:bg-indigo-200 transition">
+          <i class="fa fa-arrow-left text-indigo-600"></i>
+        </a>
+        <h1 class="text-lg font-bold text-gray-800"><i class="fa fa-check-square-o text-purple-500 mr-1"></i> 训练打卡</h1>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span id="offline-badge" class="hidden text-xs px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-700">
+          <i class="fa fa-exclamation-triangle"></i> 离线 <span id="pending-count">0</span> 条待同步
+        </span>
+        <span id="user-email" class="text-sm text-gray-600 hidden sm:block"></span>
+        <button id="btn-logout"
+          class="px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 border border-gray-200 rounded-lg hover:border-red-300 transition">
+          <i class="fa fa-sign-out"></i> 退出
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-3xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- ============ 今日状态卡 ============ -->
+    <div id="today-card" class="bg-white rounded-xl p-6 card-shadow">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-lg font-bold text-gray-800">
+          <i class="fa fa-calendar-check-o text-indigo-500"></i>
+          今日训练 <span id="today-date" class="text-xs text-gray-400 font-normal"></span>
+        </h3>
+        <a href="./plan.html" class="text-sm text-indigo-600 hover:underline">查看计划 →</a>
+      </div>
+      <div id="today-status" class="text-sm text-gray-500">加载中...</div>
+    </div>
+
+    <!-- ============ 今日动作打卡 ============ -->
+    <div id="exercises-area" class="space-y-4"></div>
+
+    <!-- ============ 历史记录 ============ -->
+    <div class="bg-white rounded-xl p-6 card-shadow">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-800">
+          <i class="fa fa-history text-purple-500"></i> 历史记录
+        </h3>
+        <button id="btn-refresh-history" class="text-sm text-gray-400 hover:text-indigo-600 px-2 py-1.5">
+          <i class="fa fa-refresh"></i> 刷新
+        </button>
+      </div>
+      <div id="history-loading" class="text-center py-6 text-gray-400">
+        <i class="fa fa-spinner fa-spin text-xl"></i>
+      </div>
+      <div id="history-list" class="space-y-3 hidden"></div>
+      <div id="history-empty" class="hidden text-center py-6 text-gray-400 text-sm">
+        <i class="fa fa-line-chart text-2xl mb-2 block text-gray-300"></i>
+        暂无训练记录，完成今日训练后这里会出现数据
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed top-5 right-5 z-50"></div>
+
+  <script src="./js/supabase-config.js"></script>
+  <script>
+    let currentUser = null;
+    let plan = null;          // 当前活跃计划
+    let currentPlanId = null;
+    let todaySession = null;  // 今日训练日对象 { day, name, exercises }
+    let todaySets = [];       // 今日已记录组
+    let lastWeightMap = {};   // 动作 → 上次重量
+
+    // ============================================================
+    // IndexedDB（离线暂存）
+    // ============================================================
+    function idbOpen() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('fitcoach', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('pending_records', { keyPath: 'id' });
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function idbPut(value) {
+      const db = await idbOpen();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('pending_records', 'readwrite');
+        tx.objectStore('pending_records').put(value);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function idbAll() {
+      const db = await idbOpen();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('pending_records', 'readonly');
+        const req = tx.objectStore('pending_records').getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function idbDelete(id) {
+      const db = await idbOpen();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('pending_records', 'readwrite');
+        tx.objectStore('pending_records').delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    // ============================================================
+    // 工具
+    // ============================================================
+    function toast(msg, type = 'info') {
+      const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500', warn: 'bg-yellow-500' };
+      const t = document.getElementById('toast');
+      t.innerHTML = `<div class="toast ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg">${msg}</div>`;
+      setTimeout(() => { t.innerHTML = ''; }, 3000);
+    }
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function isNetworkError(err) {
+      return /failed to fetch|networkerror|network error|load failed/i.test(err.message || '');
+    }
+
+    // ============================================================
+    // 初始化
+    // ============================================================
+    async function init() {
+      try {
+        if (!isSupabaseConfigured()) { toast('请先在 supabase-config.js 中配置', 'error'); return; }
+        const supabase = getSupabase();
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) { window.location.href = './index.html'; return; }
+        currentUser = user;
+        document.getElementById('user-email').textContent = user.email;
+        document.getElementById('today-date').textContent = localDateString();
+
+        await flushPending();
+        await loadPlan();
+        await loadHistory();
+        renderOfflineBadge();
+
+        window.addEventListener('online', async () => {
+          toast('网络已恢复，开始同步离线记录...', 'info');
+          await flushPending();
+          await loadHistory();
+        });
+        window.addEventListener('offline', renderOfflineBadge);
+      } catch (err) {
+        console.error(err);
+        toast('初始化失败：' + err.message, 'error');
+      }
+    }
+
+    // ============================================================
+    // 离线队列同步
+    // ============================================================
+    async function flushPending() {
+      try {
+        const queue = await idbAll();
+        if (!queue.length) { renderOfflineBadge(); return; }
+        const supabase = getSupabase();
+        for (const item of queue) {
+          const { error } = await supabase.from('training_records').insert(item.rows);
+          if (error) {
+            if (isNetworkError(error)) break;
+            console.error('离线记录同步失败（数据问题，丢弃）：', error.message);
+            await idbDelete(item.id);
+            continue;
+          }
+          await idbDelete(item.id);
+        }
+        const left = await idbAll();
+        if (left.length === 0 && queue.length > 0) toast('离线记录已全部同步', 'success');
+        renderOfflineBadge();
+      } catch (e) {
+        console.warn('离线同步失败：', e);
+        renderOfflineBadge();
+      }
+    }
+
+    async function renderOfflineBadge() {
+      const badge = document.getElementById('offline-badge');
+      let count = 0;
+      try { count = (await idbAll()).length; } catch (e) {}
+      if (!navigator.onLine || count > 0) {
+        document.getElementById('pending-count').textContent = count;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    // ============================================================
+    // 加载计划 → 确定今日训练日
+    // ============================================================
+    async function loadPlan() {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('training_plans')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+
+      const statusEl = document.getElementById('today-status');
+      const area = document.getElementById('exercises-area');
+
+      if (!data || !data.length) {
+        statusEl.innerHTML = '还没有活跃的训练计划，先去 <a href="./plan.html" class="text-indigo-600 underline">生成计划</a> 吧';
+        return;
+      }
+      plan = data[0];
+      currentPlanId = plan.id;
+
+      const schedule = weekSchedule(plan.plan_data.length);
+      const todayIdx = (new Date().getDay() + 6) % 7; // 周一 = 0
+      const pos = schedule.indexOf(todayIdx);
+      if (pos === -1 || pos >= plan.plan_data.length) {
+        statusEl.innerHTML = '<i class="fa fa-bed text-green-500"></i> 今天是休息日，好好恢复 💤（计划见<a href="./plan.html" class="text-indigo-600 underline">训练计划</a>）';
+        return;
+      }
+      todaySession = plan.plan_data[pos];
+      statusEl.innerHTML = `<span class="font-medium text-indigo-600">第 ${todaySession.day} 天 · ${escapeHtml(todaySession.name)}</span>
+        <span class="text-gray-400">（${escapeHtml(todaySession.focus || '')}）</span>`;
+      await loadTodaySets();
+      renderExercises();
+    }
+
+    // 每周训练日的星期分布（0=周一）
+    function weekSchedule(n) {
+      const presets = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5], 7: [0, 1, 2, 3, 4, 5, 6] };
+      if (presets[n]) return presets[n];
+      return Array.from({ length: n }, (_, i) => Math.floor(i * 7 / n));
+    }
+
+    // ============================================================
+    // 今日已记录组 + 上次重量
+    // ============================================================
+    async function loadTodaySets() {
+      const supabase = getSupabase();
+      const today = localDateString();
+      const { data, error } = await supabase
+        .from('training_records')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('training_date', today)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      todaySets = data || [];
+
+      const from = localDateString(new Date(Date.now() - 60 * 86400000));
+      const { data: recent } = await supabase
+        .from('training_records')
+        .select('exercise_name, weight_kg, training_date')
+        .eq('user_id', currentUser.id)
+        .gte('training_date', from)
+        .lt('training_date', today)
+        .order('training_date', { ascending: false });
+      lastWeightMap = {};
+      (recent || []).forEach(r => {
+        if (lastWeightMap[r.exercise_name] === undefined) {
+          lastWeightMap[r.exercise_name] = r.weight_kg != null ? Number(r.weight_kg) : '';
+        }
+      });
+    }
+
+    function setsOf(exerciseName) {
+      return todaySets.filter(s => s.exercise_name === exerciseName);
+    }
+
+    // ============================================================
+    // 渲染打卡卡片
+    // ============================================================
+    function renderExercises() {
+      const area = document.getElementById('exercises-area');
+      area.innerHTML = todaySession.exercises.map((ex, ei) => {
+        const logged = setsOf(ex.name);
+        const lastW = lastWeightMap[ex.name];
+        const repsMid = parseRepsMid(ex.reps);
+        return `
+        <div class="bg-white rounded-xl p-5 card-shadow">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="font-bold text-gray-800 text-sm">${escapeHtml(ex.name)}</div>
+              <div class="text-xs text-gray-400">计划：${ex.sets} 组 × ${ex.reps} 次${lastW !== '' && lastW !== undefined ? ` · 上次 ${lastW} kg` : ''}</div>
+            </div>
+            <span class="text-xs px-2 py-1 rounded-full ${logged.length >= ex.sets ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}">
+              ${logged.length}/${ex.sets} 组
+            </span>
+          </div>
+
+          ${logged.length ? `<div class="flex flex-wrap gap-1.5 mb-3">${logged.map(s => `
+            <span class="inline-flex items-center text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg">
+              第${s.set_index}组 ${s.reps}次${s.weight_kg ? `×${Number(s.weight_kg)}kg` : ''}${s.rpe ? ` RPE${Number(s.rpe)}` : ''}
+              <button data-delset="${s.id}" class="ml-1.5 text-indigo-300 hover:text-red-500"><i class="fa fa-times"></i></button>
+            </span>`).join('')}</div>` : ''}
+
+          <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">次数</label>
+              <input id="in-reps-${ei}" type="number" min="0" value="${repsMid}"
+                class="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">重量 (kg)</label>
+              <input id="in-weight-${ei}" type="number" min="0" step="0.5" value="${lastW !== '' && lastW !== undefined ? lastW : ''}" placeholder="自重可空"
+                class="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">RPE</label>
+              <select id="in-rpe-${ei}"
+                class="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none">
+                <option value="">--</option>${[6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => `<option value="${v}">${v}</option>`).join('')}
+              </select>
+            </div>
+            <div class="flex gap-2">
+              <button data-saveset="${ei}" title="记录该组"
+                class="h-[42px] px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm min-w-[44px]">
+                <i class="fa fa-check"></i>
+              </button>
+              <button data-autoset="${ei}" title="按计划一键完成剩余组数"
+                class="h-[42px] px-4 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition text-sm min-w-[44px]">
+                <i class="fa fa-bolt"></i>
+              </button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+
+      area.querySelectorAll('[data-saveset]').forEach(b => b.onclick = () => saveSet(parseInt(b.dataset.saveset), 1));
+      area.querySelectorAll('[data-autoset]').forEach(b => b.onclick = () => quickFinish(parseInt(b.dataset.autoset)));
+      area.querySelectorAll('[data-delset]').forEach(b => b.onclick = () => deleteSet(b.dataset.delset));
+    }
+
+    function parseRepsMid(range) {
+      const m = String(range || '').match(/(\d+)\s*-\s*(\d+)/);
+      if (m) return Math.round((parseInt(m[1]) + parseInt(m[2])) / 2);
+      const n = parseInt(range);
+      return isNaN(n) ? 10 : n;
+    }
+
+    function collectInputs(ei) {
+      const reps = parseInt(document.getElementById(`in-reps-${ei}`).value);
+      const weight = document.getElementById(`in-weight-${ei}`).value;
+      const rpe = document.getElementById(`in-rpe-${ei}`).value;
+      if (isNaN(reps) || reps < 0) { toast('请输入有效次数', 'error'); return null; }
+      return {
+        reps,
+        weight_kg: weight === '' ? null : parseFloat(weight),
+        rpe: rpe === '' ? null : parseFloat(rpe)
+      };
+    }
+
+    function buildRow(exerciseName, setIndex, vals) {
+      return {
+        user_id: currentUser.id,
+        plan_id: currentPlanId,
+        training_date: localDateString(),
+        exercise_name: exerciseName,
+        set_index: setIndex,
+        reps: vals.reps,
+        weight_kg: vals.weight_kg,
+        rpe: vals.rpe
+      };
+    }
+
+    // ============================================================
+    // 保存（在线直存 / 离线暂存 IndexedDB）
+    // ============================================================
+    async function persistRows(rows, offlineHint) {
+      if (!navigator.onLine) {
+        await queueOffline(rows);
+        toast(offlineHint || '当前离线，已暂存到本地，恢复网络后自动同步', 'warn');
+        return;
+      }
+      const supabase = getSupabase();
+      const { error } = await supabase.from('training_records').insert(rows);
+      if (error) {
+        if (isNetworkError(error)) {
+          await queueOffline(rows);
+          toast('网络异常，已暂存到本地，恢复网络后自动同步', 'warn');
+          return;
+        }
+        throw error;
+      }
+    }
+
+    async function queueOffline(rows) {
+      await idbPut({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), rows });
+      await renderOfflineBadge();
+    }
+
+    async function saveSet(ei, count) {
+      const ex = todaySession.exercises[ei];
+      const vals = collectInputs(ei);
+      if (!vals) return;
+      const startIdx = setsOf(ex.name).length + 1;
+      const rows = Array.from({ length: count }, (_, i) => buildRow(ex.name, startIdx + i, vals));
+      try {
+        await persistRows(rows);
+        const { data } = await getSupabase().from('training_records')
+          .select('*').eq('user_id', currentUser.id).eq('training_date', localDateString());
+        todaySets = data || [];
+        renderExercises();
+        if (count === 1) toast(`已记录第 ${startIdx} 组`, 'success');
+      } catch (err) {
+        toast('保存失败：' + err.message, 'error');
+      }
+    }
+
+    async function quickFinish(ei) {
+      const ex = todaySession.exercises[ei];
+      const vals = collectInputs(ei);
+      if (!vals) return;
+      const logged = setsOf(ex.name).length;
+      const remain = Math.max(ex.sets - logged, 0);
+      if (remain === 0) { toast('该动作计划组数已完成', 'info'); return; }
+      await saveSet(ei, remain);
+      toast(`一键完成 ${ex.name} 剩余 ${remain} 组`, 'success');
+    }
+
+    async function deleteSet(id) {
+      try {
+        const { error } = await getSupabase().from('training_records').delete().eq('id', id);
+        if (error) throw error;
+        todaySets = todaySets.filter(s => s.id !== id);
+        renderExercises();
+        await loadHistory();
+        toast('已删除该组记录', 'success');
+      } catch (err) {
+        toast('删除失败：' + err.message, 'error');
+      }
+    }
+
+    // ============================================================
+    // 历史记录（最近 7 天）
+    // ============================================================
+    async function loadHistory() {
+      const loading = document.getElementById('history-loading');
+      loading.classList.remove('hidden');
+      document.getElementById('history-list').classList.add('hidden');
+      try {
+        const supabase = getSupabase();
+        const from = localDateString(new Date(Date.now() - 7 * 86400000));
+        const { data, error } = await supabase
+          .from('training_records')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .gte('training_date', from)
+          .order('training_date', { ascending: false });
+        if (error) throw error;
+
+        const byDate = {};
+        (data || []).forEach(r => {
+          (byDate[r.training_date] = byDate[r.training_date] || []).push(r);
+        });
+        const dates = Object.keys(byDate).sort().reverse();
+        const emptyEl = document.getElementById('history-empty');
+        const listEl = document.getElementById('history-list');
+
+        if (!dates.length) {
+          emptyEl.classList.remove('hidden');
+          listEl.innerHTML = '';
+        } else {
+          emptyEl.classList.add('hidden');
+          listEl.innerHTML = dates.map(date => {
+            const rows = byDate[date];
+            const byEx = {};
+            rows.forEach(r => {
+              (byEx[r.exercise_name] = byEx[r.exercise_name] || []).push(r);
+            });
+            const totalSets = rows.length;
+            const totalVolume = rows.reduce((s, r) => s + (r.reps || 0) * (r.weight_kg || 0), 0);
+            return `
+              <div class="border border-gray-100 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-bold text-gray-700"><i class="fa fa-calendar text-gray-300 mr-1.5"></i>${date}</span>
+                  <span class="text-xs text-gray-400">${rows[0].training_date === localDateString() ? '今天' : ''} ${totalSets} 组 · 总容量 ${Math.round(totalVolume)} kg</span>
+                </div>
+                <div class="space-y-1">
+                  ${Object.entries(byEx).map(([name, rs]) => `
+                    <div class="text-xs text-gray-600 flex justify-between">
+                      <span>${escapeHtml(name)}</span>
+                      <span class="text-gray-400">${rs.length} 组 · ${rs.map(r => r.reps + (r.weight_kg ? '×' + Number(r.weight_kg) + 'kg' : '')).join(' / ')}</span>
+                    </div>`).join('')}
+                </div>
+              </div>`;
+          }).join('');
+          listEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        toast('加载历史失败：' + err.message, 'error');
+      } finally {
+        loading.classList.add('hidden');
+      }
+    }
+
+    document.getElementById('btn-refresh-history').addEventListener('click', loadHistory);
+
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      const supabase = getSupabase();
+      await supabase.auth.signOut();
+      window.location.href = './index.html';
+    });
+
+    init();
+  </script>
+</body>
+</html>

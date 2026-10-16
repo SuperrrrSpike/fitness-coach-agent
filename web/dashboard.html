@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitCoach Agent - 控制台</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { background: #f3f4f6; min-height: 100vh; }
+    .card-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+  </style>
+</head>
+<body>
+
+  <!-- ============ 顶部导航 ============ -->
+  <nav class="bg-white card-shadow sticky top-0 z-10">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center">
+        <div class="p-2 bg-indigo-100 rounded-lg mr-3">
+          <i class="fa fa-heartbeat text-indigo-600 text-xl"></i>
+        </div>
+        <h1 class="text-lg font-bold text-gray-800">FitCoach Agent</h1>
+      </div>
+      <div class="flex items-center space-x-3">
+        <span id="user-email" class="text-sm text-gray-600 hidden sm:block"></span>
+        <button id="btn-logout"
+          class="px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 border border-gray-200 rounded-lg hover:border-red-300 transition">
+          <i class="fa fa-sign-out"></i> 退出
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ 主体 ============ -->
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- 欢迎卡片 -->
+    <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white card-shadow">
+      <h2 class="text-2xl font-bold mb-1">欢迎回来，<span id="user-name">健身达人</span> 💪</h2>
+      <p class="text-indigo-100 text-sm">今天也要好好训练哦</p>
+    </div>
+
+    <!-- 数据卡片：4 个 -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white rounded-xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm text-gray-500">本周训练</span>
+          <i class="fa fa-calendar-check-o text-indigo-500"></i>
+        </div>
+        <div class="text-2xl font-bold text-gray-800" id="stat-sessions">0</div>
+        <div class="text-xs text-gray-400">次</div>
+      </div>
+
+      <div class="bg-white rounded-xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm text-gray-500">累计记录</span>
+          <i class="fa fa-list text-green-500"></i>
+        </div>
+        <div class="text-2xl font-bold text-gray-800" id="stat-records">0</div>
+        <div class="text-xs text-gray-400">条</div>
+      </div>
+
+      <div class="bg-white rounded-xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm text-gray-500">今日热量</span>
+          <i class="fa fa-fire text-orange-500"></i>
+        </div>
+        <div class="text-2xl font-bold text-gray-800" id="stat-calories">0</div>
+        <div class="text-xs text-gray-400">/ 0 kcal</div>
+      </div>
+
+      <div class="bg-white rounded-xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm text-gray-500">活跃计划</span>
+          <i class="fa fa-flag text-purple-500"></i>
+        </div>
+        <div class="text-2xl font-bold text-gray-800" id="stat-plans">0</div>
+        <div class="text-xs text-gray-400">个</div>
+      </div>
+    </div>
+
+    <!-- 两列：用户画像 + 功能区 -->
+    <div class="grid lg:grid-cols-2 gap-6">
+
+      <!-- 用户画像 -->
+      <div class="bg-white rounded-xl p-6 card-shadow">
+        <h3 class="text-lg font-bold text-gray-800 mb-4">
+          <i class="fa fa-user-circle text-indigo-500"></i> 我的画像
+        </h3>
+
+        <div id="profile-loading" class="text-center py-8 text-gray-400">
+          <i class="fa fa-spinner fa-spin text-2xl"></i>
+        </div>
+
+        <div id="profile-form" class="space-y-3 hidden">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">昵称</label>
+              <input id="p-name" type="text" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">性别</label>
+              <select id="p-gender" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none">
+                <option value="">未填写</option>
+                <option value="male">男</option>
+                <option value="female">女</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">年龄</label>
+              <input id="p-age" type="number" min="10" max="120" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">身高 (cm)</label>
+              <input id="p-height" type="number" step="0.1" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">体重 (kg)</label>
+              <input id="p-weight" type="number" step="0.1" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">目标</label>
+              <select id="p-goal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none">
+                <option value="">未填写</option>
+                <option value="lose_fat">减脂</option>
+                <option value="build_muscle">增肌</option>
+                <option value="maintain">维持</option>
+                <option value="endurance">提升体能</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">经验等级</label>
+              <select id="p-exp" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none">
+                <option value="">未填写</option>
+                <option value="beginner">新手</option>
+                <option value="intermediate">进阶</option>
+                <option value="advanced">高级</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">每周训练</label>
+              <select id="p-days" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none">
+                <option value="3">3 天</option>
+                <option value="4">4 天</option>
+                <option value="5">5 天</option>
+                <option value="6">6 天</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="btn-save-profile"
+            class="w-full mt-3 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
+            <i class="fa fa-save"></i> 保存画像
+          </button>
+        </div>
+      </div>
+
+      <!-- 功能区 -->
+      <div class="bg-white rounded-xl p-6 card-shadow">
+        <h3 class="text-lg font-bold text-gray-800 mb-4">
+          <i class="fa fa-rocket text-indigo-500"></i> 快速开始
+        </h3>
+        <div class="grid grid-cols-2 gap-3">
+          <a href="./plan.html" class="block p-4 border-2 border-gray-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition text-left">
+            <i class="fa fa-calendar-plus-o text-2xl text-indigo-500"></i>
+            <div class="mt-2 font-medium text-sm">训练计划</div>
+            <div class="text-xs text-gray-400">生成周计划</div>
+          </a>
+          <a href="./workout.html" class="block p-4 border-2 border-gray-100 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition text-left">
+            <i class="fa fa-dumbbell text-2xl text-blue-500"></i>
+            <div class="mt-2 font-medium text-sm">训练打卡</div>
+            <div class="text-xs text-gray-400">今日训练</div>
+          </a>
+          <a href="./diet.html" class="block p-4 border-2 border-gray-100 rounded-xl hover:border-green-300 hover:bg-green-50 transition text-left">
+            <i class="fa fa-cutlery text-2xl text-green-500"></i>
+            <div class="mt-2 font-medium text-sm">饮食记录</div>
+            <div class="text-xs text-gray-400">TDEE 自动计算</div>
+          </a>
+          <a href="./diet.html?photo=1" class="block p-4 border-2 border-gray-100 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition text-left">
+            <i class="fa fa-camera text-2xl text-orange-500"></i>
+            <div class="mt-2 font-medium text-sm">拍照识热量</div>
+            <div class="text-xs text-gray-400">AI 视觉识别</div>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 实时订阅演示：用户记录变化时自动刷新统计 -->
+    <div class="bg-white rounded-xl p-6 card-shadow">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-bold text-gray-800">
+          <i class="fa fa-bolt text-yellow-500"></i> 实时数据流（演示）
+        </h3>
+        <span id="realtime-status" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+          <i class="fa fa-circle-o"></i> 未连接
+        </span>
+      </div>
+      <div id="realtime-log" class="text-sm text-gray-500 max-h-40 overflow-y-auto font-mono bg-gray-50 rounded p-3">
+        等待事件...
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed top-5 right-5 z-50"></div>
+
+  <script src="./js/supabase-config.js"></script>
+  <script>
+    // ============================================================
+    // Toast
+    // ============================================================
+    function toast(msg, type = 'info') {
+      const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
+      const t = document.getElementById('toast');
+      t.innerHTML = `<div class="toast ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg">${msg}</div>`;
+      setTimeout(() => { t.innerHTML = ''; }, 2500);
+    }
+
+    // ============================================================
+    // 鉴权：未登录跳转回登录页
+    // ============================================================
+    let currentUser = null;
+
+    async function init() {
+      try {
+        if (!isSupabaseConfigured()) {
+          toast('请先在 supabase-config.js 中配置', 'error');
+          return;
+        }
+
+        const supabase = getSupabase();
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          window.location.href = './index.html';
+          return;
+        }
+        currentUser = user;
+        document.getElementById('user-email').textContent = user.email;
+
+        await loadProfile();
+        await loadStats();
+        subscribeRealtime();
+      } catch (err) {
+        console.error(err);
+        toast('初始化失败：' + err.message, 'error');
+      }
+    }
+
+    // ============================================================
+    // 加载用户画像
+    // ============================================================
+    async function loadProfile() {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .single();
+
+      document.getElementById('profile-loading').classList.add('hidden');
+      document.getElementById('profile-form').classList.remove('hidden');
+
+      if (data) {
+        document.getElementById('p-name').value = data.display_name || '';
+        document.getElementById('p-gender').value = data.gender || '';
+        document.getElementById('p-age').value = data.age || '';
+        document.getElementById('p-height').value = data.height_cm || '';
+        document.getElementById('p-weight').value = data.weight_kg || '';
+        document.getElementById('p-goal').value = data.goal || '';
+        document.getElementById('p-exp').value = data.experience_level || '';
+        document.getElementById('p-days').value = data.weekly_training_days || 3;
+        document.getElementById('user-name').textContent = data.display_name || '健身达人';
+      }
+    }
+
+    // ============================================================
+    // 保存画像
+    // ============================================================
+    document.getElementById('btn-save-profile').addEventListener('click', async () => {
+      const updates = {
+        id: currentUser.id,
+        display_name: document.getElementById('p-name').value.trim(),
+        gender: document.getElementById('p-gender').value || null,
+        age: parseInt(document.getElementById('p-age').value) || null,
+        height_cm: parseFloat(document.getElementById('p-height').value) || null,
+        weight_kg: parseFloat(document.getElementById('p-weight').value) || null,
+        goal: document.getElementById('p-goal').value || null,
+        experience_level: document.getElementById('p-exp').value || null,
+        weekly_training_days: parseInt(document.getElementById('p-days').value) || 3
+      };
+
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase
+          .from('user_profiles')
+          .upsert(updates);
+
+        if (error) throw error;
+        toast('保存成功', 'success');
+        document.getElementById('user-name').textContent = updates.display_name || '健身达人';
+      } catch (err) {
+        toast('保存失败：' + err.message, 'error');
+      }
+    });
+
+    // ============================================================
+    // 加载统计数据
+    // ============================================================
+    async function loadStats() {
+      const supabase = getSupabase();
+
+      // 本周训练次数（按日期去重）
+      const weekAgo = localDateString(new Date(Date.now() - 7 * 86400000));
+      const { count: sessionsCount } = await supabase
+        .from('training_records')
+        .select('training_date', { count: 'exact', head: true })
+        .eq('user_id', currentUser.id)
+        .gte('training_date', weekAgo);
+
+      // 累计记录
+      const { count: recordsCount } = await supabase
+        .from('training_records')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', currentUser.id);
+
+      // 今日热量
+      const today = localDateString();
+      const { data: todayMeals } = await supabase
+        .from('diet_records')
+        .select('calories')
+        .eq('user_id', currentUser.id)
+        .eq('meal_date', today);
+
+      const totalCal = (todayMeals || []).reduce((s, m) => s + (m.calories || 0), 0);
+
+      // 活跃计划
+      const { count: plansCount } = await supabase
+        .from('training_plans')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', currentUser.id)
+        .eq('status', 'active');
+
+      document.getElementById('stat-sessions').textContent = sessionsCount || 0;
+      document.getElementById('stat-records').textContent = recordsCount || 0;
+      document.getElementById('stat-calories').textContent = Math.round(totalCal);
+      document.getElementById('stat-plans').textContent = plansCount || 0;
+    }
+
+    // ============================================================
+    // 实时订阅：监听用户数据变化
+    // ============================================================
+    function subscribeRealtime() {
+      const supabase = getSupabase();
+      const log = (msg) => {
+        const el = document.getElementById('realtime-log');
+        const ts = new Date().toLocaleTimeString();
+        el.innerHTML = `<div>[${ts}] ${msg}</div>` + el.innerHTML;
+      };
+
+      const channel = supabase
+        .channel('user-data-changes')
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'training_records', filter: `user_id=eq.${currentUser.id}` },
+          (payload) => {
+            log(`📝 训练记录变更: ${payload.eventType}`);
+            loadStats();
+          })
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'diet_records', filter: `user_id=eq.${currentUser.id}` },
+          (payload) => {
+            log(`🍱 饮食记录变更: ${payload.eventType}`);
+            loadStats();
+          })
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'user_profiles', filter: `id=eq.${currentUser.id}` },
+          (payload) => {
+            log(`👤 画像变更: ${payload.eventType}`);
+          })
+        .subscribe((status) => {
+          const el = document.getElementById('realtime-status');
+          if (status === 'SUBSCRIBED') {
+            el.innerHTML = '<i class="fa fa-circle text-green-500"></i> 已连接';
+            el.className = 'text-xs px-2 py-1 rounded-full bg-green-50 text-green-600';
+            log('✅ 实时通道已连接');
+          } else if (status === 'CHANNEL_ERROR') {
+            el.innerHTML = '<i class="fa fa-circle text-red-500"></i> 连接失败';
+            el.className = 'text-xs px-2 py-1 rounded-full bg-red-50 text-red-600';
+          }
+        });
+    }
+
+    // ============================================================
+    // 退出登录
+    // ============================================================
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      const supabase = getSupabase();
+      await supabase.auth.signOut();
+      window.location.href = './index.html';
+    });
+
+    // 启动
+    init();
+  </script>
+
+  <!-- ============================================================ -->
+  <!-- 首次登录引导（V1.5，末尾追加，不改原有结构） -->
+  <!-- ============================================================ -->
+  <div id="ob-overlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-gray-900/60 p-4" style="backdrop-filter: blur(4px);">
+    <div class="bg-white rounded-2xl w-full max-w-md card-shadow p-6 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-2">
+        <div id="ob-dots" class="flex space-x-1.5"></div>
+        <button id="ob-skip" class="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5">跳过引导 ›</button>
+      </div>
+      <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-5">
+        <div id="ob-bar" class="h-full bg-indigo-600 rounded-full transition-all duration-300" style="width: 20%"></div>
+      </div>
+      <h3 id="ob-title" class="text-lg font-bold text-gray-800 mb-1"></h3>
+      <p id="ob-desc" class="text-sm text-gray-400 mb-4"></p>
+      <div id="ob-body" class="space-y-4"></div>
+      <div class="flex space-x-3 mt-6">
+        <button id="ob-prev" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hidden min-w-[44px]">上一步</button>
+        <button id="ob-next" class="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition min-w-[44px]">下一步</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const obSteps = [
+      { title: '基础信息', desc: '用于计算你的热量需求和训练建议' },
+      { title: '你的目标', desc: '我们会根据目标调整训练与饮食方案' },
+      { title: '训练经验', desc: '决定计划强度和动作选择' },
+      { title: '训练频率', desc: '每周能安排几天训练？' },
+      { title: '可用器械', desc: '可多选，决定动作库范围' }
+    ];
+    const obAnswers = {
+      gender: '', age: '', height_cm: '', weight_kg: '',
+      goal: '', experience_level: '', weekly_training_days: 3,
+      available_equipment: []
+    };
+    let obStep = 0;
+
+    function obOpt(label, value, current, extraClass, icon) {
+      const active = current === value;
+      const base = 'ob-opt p-3 rounded-xl border-2 text-center transition min-h-[44px] ' +
+        (active ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-100 text-gray-600 hover:border-indigo-200');
+      return `<button type="button" class="${base} ${extraClass || ''}" data-value="${value}">
+        ${icon ? `<i class="fa ${icon} block text-lg mb-1"></i>` : ''}${label}</button>`;
+    }
+
+    function obNumInput(id, label, value, attrs) {
+      return `<div>
+        <label class="block text-xs text-gray-500 mb-1">${label}</label>
+        <input id="${id}" type="number" value="${value || ''}" ${attrs}
+          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 focus:outline-none" />
+      </div>`;
+    }
+
+    function obRender() {
+      const body = document.getElementById('ob-body');
+      const s = obStep;
+      if (s === 0) {
+        body.innerHTML = `
+          <div class="grid grid-cols-3 gap-2">${['male:男', 'female:女', 'other:其他'].map(x => {
+            const [v, l] = x.split(':');
+            return obOpt(l, v, obAnswers.gender);
+          }).join('')}</div>
+          <div class="grid grid-cols-3 gap-3">
+            ${obNumInput('ob-age', '年龄', obAnswers.age, 'min="10" max="120" placeholder="岁"')}
+            ${obNumInput('ob-height', '身高 (cm)', obAnswers.height_cm, 'step="0.1" min="80" max="250"')}
+            ${obNumInput('ob-weight', '体重 (kg)', obAnswers.weight_kg, 'step="0.1" min="25" max="300"')}
+          </div>`;
+        body.querySelectorAll('.ob-opt').forEach(b => b.onclick = () => { obAnswers.gender = b.dataset.value; obRender(); });
+        body.querySelector('#ob-age').oninput = e => obAnswers.age = e.target.value;
+        body.querySelector('#ob-height').oninput = e => obAnswers.height_cm = e.target.value;
+        body.querySelector('#ob-weight').oninput = e => obAnswers.weight_kg = e.target.value;
+      } else if (s === 1) {
+        const goals = [
+          ['lose_fat', '减脂', 'fa-fire', '降低体脂，保留肌肉'],
+          ['build_muscle', '增肌', 'fa-hand-rock-o', '增加肌肉量与力量'],
+          ['maintain', '维持健康', 'fa-balance-scale', '保持当前体型'],
+          ['endurance', '提升体能', 'fa-bolt', '心肺耐力与运动表现']
+        ];
+        body.innerHTML = `<div class="grid grid-cols-2 gap-3">${goals.map(([v, l, i, d]) => `
+          <button type="button" class="ob-opt p-4 rounded-xl border-2 text-left transition min-h-[44px] ${obAnswers.goal === v ? 'border-indigo-500 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200'}">
+            <i class="fa ${i} text-indigo-500 text-xl"></i>
+            <div class="mt-2 font-medium text-sm text-gray-800">${l}</div>
+            <div class="text-xs text-gray-400">${d}</div>
+          </button>`).join('')}</div>`;
+        body.querySelectorAll('.ob-opt').forEach(b => b.onclick = () => { obAnswers.goal = b.dataset.value; obRender(); });
+      } else if (s === 2) {
+        const exps = [
+          ['beginner', '新手', 'fa-leaf', '0-3 个月，或刚开始系统训练'],
+          ['intermediate', '进阶', 'fa-line-chart', '3-12 个月，掌握基本动作'],
+          ['advanced', '高级', 'fa-trophy', '1 年以上，训练规律稳定']
+        ];
+        body.innerHTML = exps.map(([v, l, i, d]) => `
+          <button type="button" class="ob-opt w-full p-4 rounded-xl border-2 text-left transition min-h-[44px] flex items-center ${obAnswers.experience_level === v ? 'border-indigo-500 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200'}">
+            <i class="fa ${i} text-indigo-500 text-xl mr-3"></i>
+            <div><div class="font-medium text-sm text-gray-800">${l}</div>
+            <div class="text-xs text-gray-400">${d}</div></div>
+          </button>`).join('');
+        body.querySelectorAll('.ob-opt').forEach(b => b.onclick = () => { obAnswers.experience_level = b.dataset.value; obRender(); });
+      } else if (s === 3) {
+        body.innerHTML = `<div class="grid grid-cols-6 gap-2">${[1, 2, 3, 4, 5, 6].map(n => obOpt(n, n, obAnswers.weekly_training_days)).join('')}</div>
+          <p class="text-xs text-gray-400 text-center">新手建议每周 3 天，进阶 4-5 天</p>`;
+        body.querySelectorAll('.ob-opt').forEach(b => b.onclick = () => { obAnswers.weekly_training_days = parseInt(b.dataset.value); obRender(); });
+      } else {
+        const equips = [
+          ['dumbbell', '哑铃'], ['barbell', '杠铃'],
+          ['machine', '固定器械'], ['bodyweight', '徒手 / 自重']
+        ];
+        body.innerHTML = `<div class="grid grid-cols-2 gap-3">${equips.map(([v, l]) => {
+          const on = obAnswers.available_equipment.includes(v);
+          return `<button type="button" class="ob-eq p-4 rounded-xl border-2 text-left transition min-h-[44px] ${on ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-100 text-gray-600 hover:border-indigo-200'}">
+            <i class="fa ${on ? 'fa-check-square-o' : 'fa-square-o'} mr-2"></i>${l}</button>`;
+        }).join('')}</div>`;
+        body.querySelectorAll('.ob-eq').forEach((b, idx) => b.onclick = () => {
+          const v = ['dumbbell', 'barbell', 'machine', 'bodyweight'][idx];
+          const arr = obAnswers.available_equipment;
+          const i = arr.indexOf(v);
+          if (i >= 0) arr.splice(i, 1); else arr.push(v);
+          obRender();
+        });
+      }
+
+      document.getElementById('ob-title').textContent = obSteps[s].title;
+      document.getElementById('ob-desc').textContent = obSteps[s].desc;
+      document.getElementById('ob-bar').style.width = ((s + 1) / 5 * 100) + '%';
+      document.getElementById('ob-dots').innerHTML = obSteps.map((_, i) =>
+        `<span class="w-2 h-2 rounded-full ${i <= s ? 'bg-indigo-600' : 'bg-gray-200'}"></span>`).join('');
+      document.getElementById('ob-prev').classList.toggle('hidden', s === 0);
+      document.getElementById('ob-next').innerHTML = s === 4 ? '<i class="fa fa-check"></i> 完成' : '下一步';
+    }
+
+    function obValidate() {
+      if (obStep === 0) {
+        if (!obAnswers.gender) return '请选择性别';
+        if (!obAnswers.age || !obAnswers.height_cm || !obAnswers.weight_kg) return '请填写完整的年龄 / 身高 / 体重';
+      }
+      if (obStep === 1 && !obAnswers.goal) return '请选择你的目标';
+      if (obStep === 2 && !obAnswers.experience_level) return '请选择训练经验';
+      if (obStep === 4 && obAnswers.available_equipment.length === 0) return '至少选择一种器械（没有器械选"徒手"）';
+      return null;
+    }
+
+    function obOpen() {
+      const ov = document.getElementById('ob-overlay');
+      ov.classList.remove('hidden');
+      ov.classList.add('flex');
+      obRender();
+    }
+
+    function obClose() {
+      const ov = document.getElementById('ob-overlay');
+      ov.classList.add('hidden');
+      ov.classList.remove('flex');
+    }
+
+    document.getElementById('ob-skip').addEventListener('click', () => {
+      localStorage.setItem('fitcoach_onboarding_skipped', '1');
+      obClose();
+      toast('已跳过引导，可稍后在「我的画像」中完善信息', 'info');
+    });
+
+    document.getElementById('ob-prev').addEventListener('click', () => {
+      if (obStep > 0) { obStep--; obRender(); }
+    });
+
+    document.getElementById('ob-next').addEventListener('click', async () => {
+      const err = obValidate();
+      if (err) { toast(err, 'error'); return; }
+      if (obStep < 4) { obStep++; obRender(); return; }
+
+      const btn = document.getElementById('ob-next');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> 保存中...';
+      try {
+        const supabase = getSupabase();
+        const updates = {
+          id: currentUser.id,
+          gender: obAnswers.gender,
+          age: parseInt(obAnswers.age),
+          height_cm: parseFloat(obAnswers.height_cm),
+          weight_kg: parseFloat(obAnswers.weight_kg),
+          goal: obAnswers.goal,
+          experience_level: obAnswers.experience_level,
+          weekly_training_days: obAnswers.weekly_training_days,
+          available_equipment: obAnswers.available_equipment
+        };
+        const targets = computeNutritionTargets({
+          gender: updates.gender, age: updates.age, height_cm: updates.height_cm,
+          weight_kg: updates.weight_kg, goal: updates.goal
+        });
+        if (targets) Object.assign(updates, targets);
+
+        const { error } = await supabase.from('user_profiles').upsert(updates);
+        if (error) throw error;
+
+        localStorage.setItem('fitcoach_onboarding_skipped', '1');
+        obClose();
+        toast('画像已保存，开始你的训练之旅！', 'success');
+        if (typeof loadProfile === 'function') loadProfile();
+        if (typeof loadStats === 'function') loadStats();
+      } catch (e) {
+        toast('保存失败：' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa fa-check"></i> 完成';
+      }
+    });
+
+    // 检测画像完整性 → 触发引导
+    (async function checkOnboarding() {
+      try {
+        if (!isSupabaseConfigured()) return;
+        for (let i = 0; i < 20 && !currentUser; i++) {
+          await new Promise(r => setTimeout(r, 300));
+        }
+        if (!currentUser) return;
+
+        const supabase = getSupabase();
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .single();
+
+        const missing = !data || !data.gender || !data.age || !data.height_cm ||
+          !data.weight_kg || !data.goal || !data.experience_level;
+        const skipped = localStorage.getItem('fitcoach_onboarding_skipped') === '1';
+        if (missing && !skipped) obOpen();
+      } catch (e) {
+        console.warn('引导检测失败：', e);
+      }
+    })();
+
+    // 顶部导航注入新页面入口
+    (function injectNavLinks() {
+      const logoutBtn = document.getElementById('btn-logout');
+      if (!logoutBtn) return;
+      [['diet.html', 'fa-cutlery', '饮食'], ['plan.html', 'fa-calendar-plus-o', '计划'], ['workout.html', 'fa-check-square-o', '打卡']]
+        .forEach(([href, icon, label]) => {
+          const a = document.createElement('a');
+          a.href = './' + href;
+          a.className = 'px-3 py-1.5 text-sm text-gray-600 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition';
+          a.innerHTML = `<i class="fa ${icon}"></i> <span class="hidden md:inline">${label}</span>`;
+          logoutBtn.parentNode.insertBefore(a, logoutBtn);
+        });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.netlify/
+.vercel/
+supabase/.branches/
+supabase/.temp/
+__pycache__/
+*.py[cod]
