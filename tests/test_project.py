@@ -21,6 +21,7 @@ class ProjectSmokeTests(unittest.TestCase):
             "supabase/schema.sql",
             "supabase/storage-setup.sql",
             "supabase/functions/recognize-food/index.ts",
+            "supabase/functions/recognize-food/auth.mjs",
         ]
         for relative in required:
             self.assertTrue((ROOT / relative).is_file(), relative)
@@ -39,6 +40,13 @@ class ProjectSmokeTests(unittest.TestCase):
         self.assertIn("ai_confidence", schema)
         self.assertIn("llm_raw_response", schema)
         self.assertIn("enable row level security", schema.lower())
+
+    def test_food_recognition_requires_verified_user_session(self):
+        function = (ROOT / "supabase/functions/recognize-food/index.ts").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("authenticateUser(request", function)
+        self.assertIn('Deno.env.get("SUPABASE_URL")', function)
 
     def test_no_private_key_or_service_role_value_is_committed(self):
         secret_pattern = re.compile(

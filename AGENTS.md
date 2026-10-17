@@ -11,6 +11,7 @@
 ```bash
 python3 -m unittest discover -s tests -v
 node tests/test_shared_js.cjs
+node --test tests/test_edge_auth.mjs
 bash -n scripts/inject-config.sh
 deno check supabase/functions/recognize-food/index.ts
 ```

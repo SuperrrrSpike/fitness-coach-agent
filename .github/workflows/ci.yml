@@ -20,6 +20,7 @@ jobs:
           node-version: "22"
       - run: python -m unittest discover -s tests -v
       - run: node tests/test_shared_js.cjs
+      - run: node --test tests/test_edge_auth.mjs
       - run: bash -n scripts/inject-config.sh
       - uses: denoland/setup-deno@v2
         with:

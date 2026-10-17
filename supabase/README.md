@@ -284,9 +284,10 @@ supabase secrets set VISION_API_KEY=sk-你的通义千问key
 
 验证函数是否正常：
 ```bash
-# 替换 YOUR-PROJECT-REF 和 ANON-KEY
+# 替换项目地址、公钥和已登录用户的 access token
 curl -X POST https://YOUR-PROJECT-REF.supabase.co/functions/v1/recognize-food \
-  -H "Authorization: Bearer YOUR-ANON-KEY" \
+  -H "apikey: YOUR-ANON-OR-PUBLISHABLE-KEY" \
+  -H "Authorization: Bearer USER-ACCESS-TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"imageBase64":"data:image/jpeg;base64,/9j/4AAQ..."}'
 # 应返回 {"food_name":"...","estimated_weight_g":...}

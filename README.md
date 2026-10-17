@@ -117,7 +117,7 @@ fitness-coach-agent/
 - 所有用户数据由用户本人持有，Supabase RLS 强制隔离
 - 拍照识别通过 Edge Function 代理，前端不接触视觉模型密钥
 - 静态前端无后端密钥（Supabase Anon Key 是公开的，受 RLS 保护）
-- Edge Function 默认要求 Supabase 登录态，视觉模型密钥仅保存在服务端 Secret
+- Edge Function 在处理图片前通过 Supabase Auth 验证用户会话，视觉模型密钥仅保存在服务端 Secret
 - 热量和营养估算仅用于个人记录，不构成医疗或营养诊断
 
 ## 测试

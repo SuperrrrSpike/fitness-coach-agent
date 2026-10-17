@@ -1,3 +1,5 @@
+import { authenticateUser } from "./auth.mjs";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -46,6 +48,14 @@ Deno.serve(async (request: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
   if (request.method !== "POST") return json({ error: "仅支持 POST" }, 405);
+
+  const authentication = await authenticateUser(request, {
+    supabaseUrl: Deno.env.get("SUPABASE_URL"),
+    anonKey: Deno.env.get("SUPABASE_ANON_KEY"),
+  });
+  if (!authentication.ok) {
+    return json({ error: authentication.error }, authentication.status);
+  }
 
   const apiKey = Deno.env.get("VISION_API_KEY");
   const baseUrl = (Deno.env.get("VISION_API_BASE") ||
