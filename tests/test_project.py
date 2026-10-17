@@ -1,5 +1,9 @@
 from pathlib import Path
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 
@@ -48,6 +52,81 @@ class ProjectSmokeTests(unittest.TestCase):
             except UnicodeDecodeError:
                 continue
             self.assertIsNone(secret_pattern.search(content), str(path))
+
+
+class ConfigInjectionTests(unittest.TestCase):
+    def _workspace(self, destination: Path) -> None:
+        (destination / "scripts").mkdir()
+        (destination / "web/js").mkdir(parents=True)
+        shutil.copy2(ROOT / "scripts/inject-config.sh", destination / "scripts")
+        shutil.copy2(
+            ROOT / "web/js/supabase-config.js",
+            destination / "web/js/supabase-config.js",
+        )
+
+    def test_missing_environment_fails_without_modifying_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            self._workspace(workspace)
+            config = workspace / "web/js/supabase-config.js"
+            before = config.read_bytes()
+            environment = os.environ.copy()
+            environment.pop("SUPABASE_URL", None)
+            environment.pop("SUPABASE_ANON_KEY", None)
+
+            result = subprocess.run(
+                ["bash", "scripts/inject-config.sh"],
+                cwd=workspace,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(config.read_bytes(), before)
+
+    def test_valid_environment_is_injected_without_echoing_key(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            self._workspace(workspace)
+            environment = os.environ.copy()
+            environment["SUPABASE_URL"] = "https://demo.supabase.co"
+            environment["SUPABASE_ANON_KEY"] = "public-anon-test-value"
+
+            result = subprocess.run(
+                ["bash", "scripts/inject-config.sh"],
+                cwd=workspace,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            content = (workspace / "web/js/supabase-config.js").read_text(
+                encoding="utf-8"
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("https://demo.supabase.co", content)
+            self.assertIn("public-anon-test-value", content)
+            self.assertNotIn("public-anon-test-value", result.stdout)
+            probe = subprocess.run(
+                [
+                    "node",
+                    "-e",
+                    (
+                        "const fs=require('node:fs'),vm=require('node:vm');"
+                        "const c={window:{}};vm.createContext(c);"
+                        "vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),c);"
+                        "if(!vm.runInContext('isSupabaseConfigured()',c))process.exit(1);"
+                    ),
+                    str(workspace / "web/js/supabase-config.js"),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(probe.returncode, 0, probe.stderr)
 
 
 if __name__ == "__main__":

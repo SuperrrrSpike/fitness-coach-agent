@@ -26,9 +26,11 @@ fi
 
 echo "注入 Supabase 配置到 $CONFIG_FILE ..."
 
-# 用 perl 进行安全替换（避免 sed 对特殊字符的问题）
-perl -i -pe "s|https://YOUR-PROJECT-REF\.supabase\.co|\${SUPABASE_URL}|g" "$CONFIG_FILE"
-perl -i -pe "s|YOUR-ANON-PUBLIC-KEY|\${SUPABASE_ANON_KEY}|g" "$CONFIG_FILE"
+# 从环境变量读取替换值，避免 shell 展开和特殊字符破坏 Perl 表达式。
+perl -i -pe '
+  s|https://YOUR-PROJECT-REF\.supabase\.co|$ENV{SUPABASE_URL}|g;
+  s|YOUR-ANON-PUBLIC-KEY|$ENV{SUPABASE_ANON_KEY}|g;
+' "$CONFIG_FILE"
 
 echo "✅ 配置注入完成"
 echo "   URL: $SUPABASE_URL"

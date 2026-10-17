@@ -20,8 +20,9 @@ const SUPABASE_CONFIG = {
 };
 
 function isSupabaseConfigured() {
-  return !SUPABASE_CONFIG.url.includes('YOUR-PROJECT-REF')
-    && !SUPABASE_CONFIG.anonKey.includes('YOUR-ANON-PUBLIC-KEY');
+  return /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(SUPABASE_CONFIG.url)
+    && SUPABASE_CONFIG.anonKey.length >= 20
+    && !SUPABASE_CONFIG.anonKey.startsWith('YOUR-');
 }
 
 let supabaseClient = null;

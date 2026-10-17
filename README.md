@@ -124,9 +124,10 @@ fitness-coach-agent/
 
 ```bash
 python3 -m unittest discover -s tests -v
+node tests/test_shared_js.cjs
 ```
 
-测试会核对页面、数据库字段、Edge Function 和配置占位符，并扫描常见私钥格式。
+测试会核对页面、数据库字段、Edge Function 和配置占位符，执行营养规则与配置注入行为，并扫描常见私钥格式。
 
 ## 路线图
 
