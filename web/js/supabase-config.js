@@ -9,9 +9,9 @@
 //
 // 方式 A（简单直接）：把 URL 和 Key 填到下面的 SUPABASE_CONFIG 对象
 // 方式 B（推荐生产用）：在托管平台设置环境变量
-//   - VITE_SUPABASE_URL
-//   - VITE_SUPABASE_ANON_KEY
-//   部署时通过构建脚本注入到 config.js（见 README 部署章节）
+//   - SUPABASE_URL
+//   - SUPABASE_ANON_KEY
+//   部署时运行 scripts/inject-config.sh 注入到本文件（见 README 部署章节）
 // ============================================================
 
 const SUPABASE_CONFIG = {
