@@ -125,9 +125,12 @@ fitness-coach-agent/
 ```bash
 python3 -m unittest discover -s tests -v
 node tests/test_shared_js.cjs
+node --test tests/test_edge_auth.mjs
+bash -n scripts/inject-config.sh
+deno check supabase/functions/recognize-food/index.ts
 ```
 
-测试会核对页面、数据库字段、Edge Function 和配置占位符，执行营养规则与配置注入行为，并扫描常见私钥格式。
+测试会核对页面、数据库字段、Edge Function 和配置占位符，执行营养规则、配置注入行为和用户会话鉴权，并扫描常见私钥格式。本机未安装 Deno 时，可跳过最后一条，由 GitHub Actions 完成类型检查。
 
 ## 路线图
 
